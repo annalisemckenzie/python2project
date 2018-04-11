@@ -12,16 +12,17 @@ Wake Models
 import numpy as np
 
 # NOTES TO ANNALISE:
-#     Add nested wake provision to PARK 3D and 2D
+#     Test nested wake provision to PARK 3D and 2D
 #     Add CFD model
+#     probwui should be [wd[tubs[ws]]]
 
 
 def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
             ro, aif, farm_x, farm_y, cut_in, rated, cut_out, Cp,
-            availability, extra=False):
+            availability, nwp=False, extra=False):
     initial_num = len(xlocs)
     num_directions = len(xlocs[0])
-    windspeeds = [[] for ii in range(initial_num)]
+    windspeeds = [[] for ii in range(num_directions)]
     usturbines = [[] for ii in range(initial_num)]
     wakewidths = [[] for ii in range(initial_num)]
     distances = [[] for ii in range(initial_num)]
@@ -29,6 +30,8 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
     xcoords = [[] for ii in range(initial_num)]
     zcoords = [[] for ii in range(initial_num)]
     power = [[] for ii in range(initial_num)]
+    # figure out which turbines are downstream of which other turbines
+    # and how far downstream they are
     for j in range(initial_num):  # downstream turbine
         upstrm = []
         distanceus = []
@@ -95,36 +98,38 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
         # print('wakewidth for ', j, ': ',turbines[j].wakewidth)
         # print('distances for ', j, ': ',turbines[j].distance)
 
-#    for i in range(0, initial_num):
-#        dsds = []
-#        for d in range(0, direction):
-#            dsone = []
-#            for j in range(0, initial_num):
-#                if j != i:
-#                    if i in turbines[j].usturbines[d]:
-#                        dsone.append(j)
-#            dsds.append(dsone)
-#        turbines[i].dsturbines = dsds
-#        # print('dsturbines for ', j, ': ',turbines[j].dsturbines)
+    #    for i in range(0, initial_num):
+    #        dsds = []
+    #        for d in range(0, direction):
+    #            dsone = []
+    #            for j in range(0, initial_num):
+    #                if j != i:
+    #                    if i in turbines[j].usturbines[d]:
+    #                        dsone.append(j)
+    #            dsds.append(dsone)
+    #        turbines[i].dsturbines = dsds
+    #        # print('dsturbines for ', j, ': ',turbines[j].dsturbines)
 
-#    code check
-#    print(turbines[7].dsturbines[0])
-#    print(turbines[7].dsturbinesrec)
-#    print(turbines[7].usturbines[0])
-#    print(turbines[7].usturbinesrec)
-#    print(turbines[7].wakewidth)
-#    print(turbines[7].distance)
-#    print(turbines[4].dsturbines[0])
-#    print(turbines[4].dsturbinesrec)
-#    print(turbines[4].usturbines[0])
-#    print(turbines[4].usturbinesrec)
-#    print(turbines[4].wakewidth)
-#    print(turbines[4].distance)
+    #    code check
+    #    print(turbines[7].dsturbines[0])
+    #    print(turbines[7].dsturbinesrec)
+    #    print(turbines[7].usturbines[0])
+    #    print(turbines[7].usturbinesrec)
+    #    print(turbines[7].wakewidth)
+    #    print(turbines[7].distance)
+    #    print(turbines[4].dsturbines[0])
+    #    print(turbines[4].dsturbinesrec)
+    #    print(turbines[4].usturbines[0])
+    #    print(turbines[4].usturbinesrec)
+    #    print(turbines[4].wakewidth)
+    #    print(turbines[4].distance)
 
     # Now that we know which turbines are downstream of others,
     # calculate the percentage of the rotor swept area that is within the wake
     for i in range(0, initial_num):
         complete_percent = []
+        dummyx = [[] for ii in range(num_directions)]
+        dummyz = [[] for ii in range(num_directions)]
         for wd in range(num_directions):
             parpercent = []
             overlap_flag = 0
@@ -189,10 +194,10 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                 secondz = hh[second]
                 secondrad = wakewidths[i][wd][1] / 2.0
                 # distance between the centerline of wake and rotor hub
-                cd = np.sqrt(((firstx - secondx) ** 2.0)
-                             + ((firstz - secondz) ** 2.0))
+                cd2 = np.sqrt(((firstx - secondx) ** 2.0)
+                              + ((firstz - secondz) ** 2.0))
                 # if wakes do not overlap at all within the rotor swept area
-                if cd > (firstrad + secondrad):
+                if cd2 > (firstrad + secondrad):
                     overlap_flag = 1
                     for q in range(len(usturbines[i][wd])):
                         j = usturbines[i][wd][q]
@@ -232,29 +237,34 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                             z = AOverlap / RSA
                             # percentage of RSA that has wake interaction
                             parpercent.append(z)
-
+            # if there are overlapping wakes or more than 2 turbines,
+            # discretize space instead of calculating percent
             if len(usturbines[i][wd]) >= 2 and overlap_flag != 1:
-                dummyx = [[] for ii in wd]
-                dummyz = [[] for ii in wd]
                 # if there are at least 2 upstream turbines whose
                 # wakes overlap, discretize the RSA and evaluate each point
                 xx, zz = Discretize_RSA(xlocs[i][wd], ylocs[i][wd],
                                         hh[i], rr[i])
+                # dummyx = discretized x-locations for each wind direction for
+                # a single turbine
                 dummyx[wd] = xx
                 dummyz[wd] = zz
-                xcoords[i] = dummyx
-                xcoords[i] = dummyz
             complete_percent.append(parpercent)
         percent[i] = complete_percent
-# Code Check
-# Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)
+        xcoords[i] = dummyx
+        xcoords[i] = dummyz
+    # Code Check
+    # Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)
 
     # calculate wind speed for each downstream turbine based
     # on downstream distance
-    for k in range(0, initial_num):
-        wdsp = []
-        for u0i in range(0, len(U0)):
-            for wd in range(num_directions):
+    for wd in range(num_directions):
+        wdsp_byturb = []
+        analysis_order = [(i, ylocs[wd]) for i in range(initial_num)]
+        analysis_order.sort(key=lambda x: x[1])
+        analysis_order = [i[0] for i in analysis_order]
+        for k in analysis_order:
+            wdsp = []
+            for u0i in range(0, len(U0)):
                 if len(usturbines[k][wd]) == 0:
                     # if turbine has no upstream turbines,
                     # INCORPORATE POWER LAW
@@ -313,6 +323,7 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                 # turbine has at least two upstream turbines whos wakes overlap
                 elif len(usturbines[k][wd]) >= 2 and len(percent[k][wd]) == 0:
                     coordWS = []
+                    usturbcoord = [[] for i in range(len(xcoords[k][wd]))]
                     for i in range(0, len(xcoords[k][wd])):
                         # xcoords created in Discretize_RSA
                         decWS = []
@@ -351,6 +362,7 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                                 wake = (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
                                 Uz = U0[u0i] * wake
                                 decWS.append(Uz)
+                                usturbcoord[i].append(US)
 
                         coordui = 0.0
                         if len(decWS) != 0:
@@ -374,40 +386,68 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                             Uz = U0[u0i] * ((zval / Zref) ** alphah)
                             coordui = Uz
                             coordWS.append(coordui)
+                    # nested wake provision
+                    # if every point has the same upstream turbines
+                    # AND the user has specified the nwp
+                    all_set = set([usturbcoord[0] == i for i in usturbcoord])
+                    if all_set == {True} and nwp:
+                        # find index of closest upstream wake
+                        ustbs = distances[k][wd]
+                        x = min(ustbs)
+                        usindex = ustbs.index(x)
+                        # print("analyzing turbine: ",k)
+                        # print('only reducing speed from turbine: ',usindex)
+                        hubheight = hh[k]
+                        alpha = (0.5 / np.log(hubheight / z0))
+                        Rr = rr[k]
+                        # Grady Model
+                        r1 = Rr * np.sqrt((1-aif) / (1 - 2*aif))
+                        EWU = (windspeeds[usindex][wd]
+                               * (1 - (2*aif)/((1+alpha*(x/r1))**(2))))
+                        wdsp.append(EWU * ((hubheight / Zref) ** alphah))
+                    # no nested wake provision
+                    else:
+                        # Sum discretized wind speeds
+                        tally2 = 0.0
+                        percentage = 1.0 / 49.0
+                        for f in range(0, len(coordWS)):
+                            tally2 += percentage * coordWS[f]
 
-                    # Sum discretized wind speeds
-                    tally2 = 0.0
-                    percentage = 1.0 / 49.0
-                    for f in range(0, len(coordWS)):
-                        tally2 += percentage * coordWS[f]
-
-                    d = len(coordWS)
-                    wdsp.append(tally2)
-        windspeeds[k] = wdsp
+                        d = len(coordWS)
+                        wdsp.append(tally2)
+            wdsp_byturb.append(wdsp)
+        order_wdsp = list(zip(analysis_order, wdsp_byturb))
+        order_wdsp.sort(key=lambda x: x[0])
+        wdsp_byturb = [ii[1] for ii in order_wdsp]
+        windspeeds[wd] = wdsp_byturb
 
     # calculate power developed for each turbine
     for i in range(0, initial_num):
         pwr = []
         rorad = rr[i]
         Area = (rorad ** 2.0) * np.pi
-        for wd in range(0, len(probwui)):
-            # incorporating power curve suggested by Pat, June 10th <-- Bryony
-            if windspeeds[i][wd] < rated and windspeeds[i][wd] >= cut_in:
-                # Calculate power for effective windspeeds between 3 and 11 m/s
-                temp1 = (0.5 * ro * Area * (windspeeds[i][wd] ** 3.0)
-                         * Cp * availability / 1000.)
-                p1 = temp1 * probwui[wd]
-                pwr.append(p1)
+        for wd in range(num_directions):
+            for spd in range(len(U0)):
+                # incorporating power curve suggested by Pat,
+                # June 10th <-- Bryony
+                less_rated = windspeeds[wd][i][spd] < rated
+                greater_cutin = windspeeds[wd][i][spd] >= cut_in
+                if less_rated and greater_cutin:
+                    # cubic region of curve
+                    temp1 = (0.5 * ro * Area * (windspeeds[wd][i][spd] ** 3.0)
+                             * Cp * availability / 1000.)
+                    p1 = temp1 * probwui[wd][i][spd]
+                    pwr.append(p1)
 
-            if windspeeds[i][wd] < cut_in or windspeeds[i][wd] >= cut_out:
-                # wind below cut-in speed or above cut-out = 0 kW
-                pwr.append(0.0)
-            # constant for rated power and above
-            if windspeeds[i][wd] >= rated and windspeeds[i][wd] < cut_out:
-                temp1 = (0.5 * ro * Area * (rated ** 3.0)
-                         * Cp * availability / 1000.)
-                p1 = temp1 * probwui[wd]
-                pwr.append(p1)
+                elif not greater_cutin or windspeeds[wd][i][spd] >= cut_out:
+                    # wind below cut-in speed or above cut-out = 0 kW
+                    pwr.append(0.0)
+                # constant for rated power and above
+                elif not less_rated and windspeeds[wd][i][spd] < cut_out:
+                    temp1 = (0.5 * ro * Area * (rated ** 3.0)
+                             * Cp * availability / 1000.)
+                    p1 = temp1 * probwui[wd][i][spd]
+                    pwr.append(p1)
         power[i] = [this_power for this_power in pwr]
     if extra:
         return power, windspeeds
@@ -417,12 +457,12 @@ def PARK_3D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
 
 def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
             ro, aif, farm_x, farm_y, cut_in, rated, cut_out, Cp,
-            availability, extra=False):
+            availability, nwp=False, extra=False):
     if len(set(hh)) != 1:
         return 'error: multiple hub heights in 2D calculation'
     initial_num = len(xlocs)
     num_directions = len(xlocs[0])
-    windspeeds = [[] for ii in range(initial_num)]
+    windspeeds = [[] for ii in range(num_directions)]
     usturbines = [[] for ii in range(initial_num)]
     wakewidths = [[] for ii in range(initial_num)]
     distances = [[] for ii in range(initial_num)]
@@ -496,36 +536,38 @@ def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
         # print('wakewidth for ', j, ': ',turbines[j].wakewidth)
         # print('distances for ', j, ': ',turbines[j].distance)
 
-#    for i in range(0, initial_num):
-#        dsds = []
-#        for d in range(0, direction):
-#            dsone = []
-#            for j in range(0, initial_num):
-#                if j != i:
-#                    if i in turbines[j].usturbines[d]:
-#                        dsone.append(j)
-#            dsds.append(dsone)
-#        turbines[i].dsturbines = dsds
-#        # print('dsturbines for ', j, ': ',turbines[j].dsturbines)
+    #    for i in range(0, initial_num):
+    #        dsds = []
+    #        for d in range(0, direction):
+    #            dsone = []
+    #            for j in range(0, initial_num):
+    #                if j != i:
+    #                    if i in turbines[j].usturbines[d]:
+    #                        dsone.append(j)
+    #            dsds.append(dsone)
+    #        turbines[i].dsturbines = dsds
+    #        # print('dsturbines for ', j, ': ',turbines[j].dsturbines)
 
-#    code check
-#    print(turbines[7].dsturbines[0])
-#    print(turbines[7].dsturbinesrec)
-#    print(turbines[7].usturbines[0])
-#    print(turbines[7].usturbinesrec)
-#    print(turbines[7].wakewidth)
-#    print(turbines[7].distance)
-#    print(turbines[4].dsturbines[0])
-#    print(turbines[4].dsturbinesrec)
-#    print(turbines[4].usturbines[0])
-#    print(turbines[4].usturbinesrec)
-#    print(turbines[4].wakewidth)
-#    print(turbines[4].distance)
+    #    code check
+    #    print(turbines[7].dsturbines[0])
+    #    print(turbines[7].dsturbinesrec)
+    #    print(turbines[7].usturbines[0])
+    #    print(turbines[7].usturbinesrec)
+    #    print(turbines[7].wakewidth)
+    #    print(turbines[7].distance)
+    #    print(turbines[4].dsturbines[0])
+    #    print(turbines[4].dsturbinesrec)
+    #    print(turbines[4].usturbines[0])
+    #    print(turbines[4].usturbinesrec)
+    #    print(turbines[4].wakewidth)
+    #    print(turbines[4].distance)
 
     # Now that we know which turbines are downstream of others,
     # calculate the percentage of the rotor swept area that is within the wake
     for i in range(0, initial_num):
         complete_percent = []
+        dummyx = [[] for ii in range(num_directions)]
+        dummyz = [[] for ii in range(num_directions)]
         for wd in range(num_directions):
             parpercent = []
             overlap_flag = 0
@@ -607,27 +649,30 @@ def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                             parpercent.append(z)
 
             if len(usturbines[i][wd]) >= 2 and overlap_flag != 1:
-                dummyx = [[] for ii in wd]
-                dummyz = [[] for ii in wd]
                 # if there are at least 2 upstream turbines whose
                 # wakes overlap, discretize the RSA and evaluate each point
                 xx, zz = Discretize_RSA(xlocs[i][wd], ylocs[i][wd],
                                         hh[i], rr[i], True)
+                # dummyx = discretized x-locations for each wind direction for
+                # a single turbine
                 dummyx[wd] = xx
                 dummyz[wd] = zz
-                xcoords[i] = dummyx
-                xcoords[i] = dummyz
             complete_percent.append(parpercent)
         percent[i] = complete_percent
-# Code Check
-# Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)
-
+        xcoords[i] = dummyx
+        xcoords[i] = dummyz
+    # Code Check
+    # Compute_Wake(initial_num, z0, U0, Zref, alphah, ro, aif)
     # calculate wind speed for each downstream turbine based
     # on downstream distance
-    for k in range(0, initial_num):
-        wdsp = []
-        for u0i in range(0, len(U0)):
-            for wd in range(num_directions):
+    for wd in range(num_directions):
+        wdsp_byturb = []
+        analysis_order = [(i, ylocs[wd]) for i in range(initial_num)]
+        analysis_order.sort(key=lambda x: x[1])
+        analysis_order = [i[0] for i in analysis_order]
+        for k in analysis_order:
+            wdsp = []
+            for u0i in range(0, len(U0)):
                 if len(usturbines[k][wd]) == 0:
                     # if turbine has no upstream turbines,
                     # INCORPORATE POWER LAW
@@ -686,6 +731,7 @@ def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                 # turbine has at least two upstream turbines whos wakes overlap
                 elif len(usturbines[k][wd]) >= 2 and len(percent[k][wd]) == 0:
                     coordWS = []
+                    usturbcoord = [[] for i in range(len(xcoords[k][wd]))]
                     for i in range(0, len(xcoords[k][wd])):
                         # xcoords created in Discretize_RSA
                         decWS = []
@@ -724,6 +770,7 @@ def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                                 wake = (1 - (2*aif)/((1+alpha*(x/r1))**(2)))
                                 Uz = U0[u0i] * wake
                                 decWS.append(Uz)
+                                usturbcoord[i].append(US)
 
                         coordui = 0.0
                         if len(decWS) != 0:
@@ -747,38 +794,66 @@ def PARK_2D(xlocs, ylocs, rr, hh, z0, U0, probwui, Zref, alphah,
                             Uz = U0[u0i] * ((zval / Zref) ** alphah)
                             coordui = Uz
                             coordWS.append(coordui)
-
-                    # Sum discretized wind speeds
-                    tally2 = 0.0
-                    percentage = 1.0 / 49.0
-                    for f in range(0, len(coordWS)):
-                        tally2 += percentage * coordWS[f]
-                    wdsp.append(tally2)
-        windspeeds[k] = wdsp
+                    # nested wake provision
+                    # if every point has the same upstream turbines
+                    # AND the user has specified the nwp
+                    all_set = set([usturbcoord[0] == i for i in usturbcoord])
+                    if all_set == {True} and nwp:
+                        # find index of closest upstream wake
+                        ustbs = distances[k][wd]
+                        x = min(ustbs)
+                        usindex = ustbs.index(x)
+                        # print("analyzing turbine: ",k)
+                        # print('only reducing speed from turbine: ',usindex)
+                        hubheight = hh[k]
+                        alpha = (0.5 / np.log(hubheight / z0))
+                        Rr = rr[k]
+                        # Grady Model
+                        r1 = Rr * np.sqrt((1-aif) / (1 - 2*aif))
+                        EWU = (windspeeds[usindex][wd]
+                               * (1 - (2*aif)/((1+alpha*(x/r1))**(2))))
+                        wdsp.append(EWU * ((hubheight / Zref) ** alphah))
+                    # no nested wake provision
+                    else:
+                        # Sum discretized wind speeds
+                        tally2 = 0.0
+                        percentage = 1.0 / 49.0
+                        for f in range(0, len(coordWS)):
+                            tally2 += percentage * coordWS[f]
+                        wdsp.append(tally2)
+            wdsp_byturb.append(wdsp)
+        order_wdsp = list(zip(analysis_order, wdsp_byturb))
+        order_wdsp.sort(key=lambda x: x[0])
+        wdsp_byturb = [ii[1] for ii in order_wdsp]
+        windspeeds[wd] = wdsp_byturb
 
     # calculate power developed for each turbine
     for i in range(0, initial_num):
         pwr = []
         rorad = rr[i]
         Area = (rorad ** 2.0) * np.pi
-        for wd in range(0, len(probwui)):
-            # incorporating power curve suggested by Pat, June 10th <-- Bryony
-            if windspeeds[i][wd] < rated and windspeeds[i][wd] >= cut_in:
-                # Calculate power for effective windspeeds between 3 and 11 m/s
-                temp1 = (0.5 * ro * Area * (windspeeds[i][wd] ** 3.0)
-                         * Cp * availability / 1000.)
-                p1 = temp1 * probwui[wd]
-                pwr.append(p1)
+        for wd in range(num_directions):
+            for spd in range(len(U0)):
+                # incorporating power curve suggested by Pat,
+                # June 10th <-- Bryony
+                less_rated = windspeeds[wd][i][spd] < rated
+                greater_cutin = windspeeds[wd][i][spd] >= cut_in
+                if less_rated and greater_cutin:
+                    # cubic region of curve
+                    temp1 = (0.5 * ro * Area * (windspeeds[wd][i][spd] ** 3.0)
+                             * Cp * availability / 1000.)
+                    p1 = temp1 * probwui[wd][i][spd]
+                    pwr.append(p1)
 
-            if windspeeds[i][wd] < cut_in or windspeeds[i][wd] >= cut_out:
-                # wind below cut-in speed or above cut-out = 0 kW
-                pwr.append(0.0)
-            # constant for rated power and above
-            if windspeeds[i][wd] >= rated and windspeeds[i][wd] < cut_out:
-                temp1 = (0.5 * ro * Area * (rated ** 3.0)
-                         * Cp * availability / 1000.)
-                p1 = temp1 * probwui[wd]
-                pwr.append(p1)
+                elif not greater_cutin or windspeeds[wd][i][spd] >= cut_out:
+                    # wind below cut-in speed or above cut-out = 0 kW
+                    pwr.append(0.0)
+                # constant for rated power and above
+                elif not less_rated and windspeeds[wd][i][spd] < cut_out:
+                    temp1 = (0.5 * ro * Area * (rated ** 3.0)
+                             * Cp * availability / 1000.)
+                    p1 = temp1 * probwui[wd][i][spd]
+                    pwr.append(p1)
         power[i] = [this_power for this_power in pwr]
     if extra:
         return power, windspeeds
